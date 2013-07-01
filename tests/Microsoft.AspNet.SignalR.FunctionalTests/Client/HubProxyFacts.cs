@@ -417,9 +417,46 @@ namespace Microsoft.AspNet.SignalR.Tests
                     }
 
                     hubConnection.Start(host.Transport).Wait();
-                    proxy.Invoke("Send", "Hello");
+                    proxy.Invoke("Send");
 
                     Assert.True(tcs.Task.Wait(TimeSpan.FromSeconds(10)));
+                }
+            }
+        }
+
+        [Theory]
+        [InlineData(HostType.Memory, TransportType.ServerSentEvents, MessageBusType.Default)]
+        [InlineData(HostType.Memory, TransportType.ServerSentEvents, MessageBusType.Fake)]
+        [InlineData(HostType.Memory, TransportType.ServerSentEvents, MessageBusType.FakeMultiStream)]
+        [InlineData(HostType.Memory, TransportType.LongPolling, MessageBusType.Default)]
+        [InlineData(HostType.Memory, TransportType.LongPolling, MessageBusType.Fake)]
+        [InlineData(HostType.Memory, TransportType.LongPolling, MessageBusType.FakeMultiStream)]
+        [InlineData(HostType.IISExpress, TransportType.LongPolling, MessageBusType.Default)]
+        [InlineData(HostType.IISExpress, TransportType.ServerSentEvents, MessageBusType.Default)]
+        public void RequestHeadersCanBeSetOnceConnected(HostType hostType, TransportType transportType, MessageBusType messageBusType)
+        {
+            using (var host = CreateHost(hostType, transportType))
+            {
+                // Arrange
+                host.Initialize(messageBusType: messageBusType);
+                HubConnection hubConnection = CreateHubConnection(host);
+                var mre = new ManualResetEventSlim();
+
+                using (hubConnection)
+                {
+                    IHubProxy proxy = hubConnection.CreateHubProxy("ExamineHeadersHub");
+                    
+                    proxy.On("sendHeader", (headers) =>
+                    {
+                        Assert.Equal<string>("test-header", (string)headers.testHeader);
+                        mre.Set();
+                    });
+
+                    hubConnection.Start(host.Transport).Wait();
+
+                    hubConnection.Headers.Add("test-header", "test-header");
+                    proxy.Invoke("Send");
+                    Assert.True(mre.Wait(TimeSpan.FromSeconds(5)));
                 }
             }
         }

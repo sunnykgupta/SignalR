@@ -158,6 +158,35 @@ namespace Microsoft.AspNet.SignalR.Tests
             }
         }
 
+        [Theory]
+        [InlineData(HostType.IISExpress, TransportType.LongPolling)]
+        [InlineData(HostType.IISExpress, TransportType.ServerSentEvents)]
+        public void RequestHeadersCanBeSetOnceConnected(HostType hostType, TransportType transportType)
+        {
+            using (var host = CreateHost(hostType, transportType))
+            {
+                // Arrange
+                host.Initialize();
+                var connection = CreateConnection(host, "/examine-request");
+                var mre = new ManualResetEventSlim();
+
+                connection.Received += (arg) =>
+                {
+                    JObject headers = JsonConvert.DeserializeObject<JObject>(arg);
+                    Assert.Equal("test-header", (string)headers["testHeader"]);
+
+                    mre.Set();
+                };
+
+                connection.Headers.Add("test-header", "test-header");
+
+                connection.Start(host.Transport).Wait();
+                connection.Send("message");
+
+                // Assert
+                Assert.True(mre.Wait(TimeSpan.FromSeconds(10)));
+            }
+        }
 
         [Theory]
         [InlineData(HostType.IISExpress, TransportType.LongPolling)]
@@ -202,28 +231,6 @@ namespace Microsoft.AspNet.SignalR.Tests
 
                     // Assert
                     Assert.True(tcs.Task.Wait(TimeSpan.FromSeconds(10)));
-                }
-            }
-        }
-
-        [Theory]
-        [InlineData(HostType.IISExpress, TransportType.LongPolling)]
-        [InlineData(HostType.IISExpress, TransportType.ServerSentEvents)]
-        [InlineData(HostType.IISExpress, TransportType.Websockets)]
-        public void RequestHeadersCannotBeSetOnceConnected(HostType hostType, TransportType transportType)
-        {
-            using (var host = CreateHost(hostType, transportType))
-            {
-                // Arrange
-                host.Initialize();
-                var connection = CreateConnection(host, "/examine-request");
-
-                using (connection)
-                {
-                    connection.Start(host.Transport).Wait();
-
-                    var ex = Assert.Throws<InvalidOperationException>(() => connection.Headers.Add("test-header", "test-header"));
-                    Assert.Equal("Request headers cannot be set after the connection has started.", ex.Message);
                 }
             }
         }
